@@ -202,10 +202,10 @@ async function handleDeleteInvoice(id) {
   const invoice = getInvoiceById(id);
   if (!invoice) return;
 
-  const confirmed = await showConfirm(`Delete Invoice #${invoice.invoiceNumber} for ${invoice.customerName}?`);
+  const confirmed = await showConfirm(`Move Invoice #${invoice.invoiceNumber} to Recycle Bin?`);
   if (confirmed) {
     deleteInvoice(id);
-    showToast('Invoice deleted');
+    showToast('Invoice moved to Recycle Bin — can be restored anytime', 'info');
     renderHistory();
   }
 }

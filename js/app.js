@@ -32,7 +32,8 @@ function handleRoute() {
         if (item.dataset.page === page ||
             (page === 'new' && item.dataset.page === 'new') ||
             (page === 'edit' && item.dataset.page === 'new') ||
-            (page === 'preview' && item.dataset.page === 'history')) {
+            (page === 'preview' && item.dataset.page === 'history') ||
+            (page === 'recycle-bin' && item.dataset.page === 'history')) {
             item.classList.add('active');
         }
     });
@@ -56,6 +57,9 @@ function handleRoute() {
             break;
         case 'history':
             renderHistory();
+            break;
+        case 'recycle-bin':
+            renderRecycleBin();
             break;
         case 'settings':
             renderSettings();

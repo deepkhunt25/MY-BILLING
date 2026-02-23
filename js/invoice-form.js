@@ -58,10 +58,15 @@ function renderInvoiceForm(invoiceId) {
             </div>
             <div class="form-group">
               <label>Payment Status</label>
-              <select class="form-control" id="invStatus">
+              <select class="form-control" id="invStatus" onchange="togglePaymentDate()">
                 <option value="unpaid" ${isEdit && invoice.status === 'unpaid' ? 'selected' : ''}>Unpaid</option>
                 <option value="paid" ${(!isEdit || invoice.status === 'paid') ? 'selected' : ''}>Paid</option>
               </select>
+            </div>
+            <div class="form-group" id="paymentDateGroup" style="display: ${(!isEdit || invoice.status === 'paid') ? 'block' : 'none'};">
+              <label>Payment Date <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(select date)</span></label>
+              <input type="date" class="form-control" id="invPaymentDate"
+                value="${isEdit && invoice.paymentDate ? invoice.paymentDate : ''}">
             </div>
             <div class="form-group">
               <label>Payment Mode</label>
@@ -176,6 +181,16 @@ function renderInvoiceForm(invoiceId) {
               </select>
             </div>
             <div class="form-group">
+              <label>Received Amount (₹)</label>
+              <input type="number" class="form-control" id="invReceived"
+                value="${isEdit ? (invoice.receivedAmount || 0) : 0}" min="0" step="1" onchange="recalculateTotals()" placeholder="0">
+            </div>
+            <div class="form-group" id="receivedDateGroup" style="display: ${isEdit && invoice.receivedAmount > 0 ? 'block' : 'none'};">
+              <label>Received Date <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(select date)</span></label>
+              <input type="date" class="form-control" id="invReceivedDate"
+                value="${isEdit && invoice.receivedDate ? invoice.receivedDate : ''}">
+            </div>
+            <div class="form-group">
               <label>Notes</label>
               <input type="text" class="form-control" id="invNotes" 
                 value="${isEdit ? (invoice.notes || '') : ''}" placeholder="Optional notes">
@@ -199,6 +214,14 @@ function renderInvoiceForm(invoiceId) {
               <div class="totals-row total-final">
                 <span>Grand Total</span>
                 <span id="displayGrandTotal">₹0</span>
+              </div>
+              <div id="receivedRow" class="totals-row" style="color: var(--success, #22c55e);">
+                <span>Received</span>
+                <span id="displayReceived">₹0</span>
+              </div>
+              <div id="balanceRow" class="totals-row" style="color: var(--danger, #ef4444); font-weight: 700;">
+                <span>Balance Due</span>
+                <span id="displayBalance">₹0</span>
               </div>
               <div style="text-align: right; font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; font-style: italic;">
                 <span id="displayAmountWords"></span>
@@ -305,9 +328,11 @@ function recalculateTotals() {
   const subtotal = currentItems.reduce((sum, item) => sum + (item.pricePerUnit * item.qty), 0);
   const gstPercent = parseInt(document.getElementById('invGst')?.value || 0);
   const discount = parseFloat(document.getElementById('invDiscount')?.value || 0);
+  const received = parseFloat(document.getElementById('invReceived')?.value || 0);
 
   const gstAmount = (subtotal * gstPercent) / 100;
   const grandTotal = subtotal + gstAmount - discount;
+  const balance = Math.max(0, grandTotal - received);
 
   // Update totals in items array
   currentItems.forEach(item => {
@@ -323,6 +348,10 @@ function recalculateTotals() {
   const elDiscRow = document.getElementById('discountRow');
   const elTotal = document.getElementById('displayGrandTotal');
   const elWords = document.getElementById('displayAmountWords');
+  const elReceived = document.getElementById('displayReceived');
+  const elReceivedRow = document.getElementById('receivedRow');
+  const elBalance = document.getElementById('displayBalance');
+  const elBalanceRow = document.getElementById('balanceRow');
 
   if (elSub) elSub.textContent = formatCurrency(subtotal);
   if (elGst) elGst.textContent = formatCurrency(gstAmount);
@@ -332,6 +361,16 @@ function recalculateTotals() {
   if (elDiscRow) elDiscRow.style.display = discount > 0 ? 'flex' : 'none';
   if (elTotal) elTotal.textContent = formatCurrency(grandTotal);
   if (elWords) elWords.textContent = numberToWords(grandTotal);
+  if (elReceived) elReceived.textContent = formatCurrency(received);
+  if (elReceivedRow) elReceivedRow.style.display = received > 0 ? 'flex' : 'none';
+  if (elBalance) elBalance.textContent = formatCurrency(balance);
+  if (elBalanceRow) elBalanceRow.style.display = received > 0 ? 'flex' : 'none';
+
+  // Show/hide received date field
+  const elReceivedDateGroup = document.getElementById('receivedDateGroup');
+  if (elReceivedDateGroup) {
+    elReceivedDateGroup.style.display = received > 0 ? 'block' : 'none';
+  }
 }
 
 function handleCustomerSelect() {
@@ -350,12 +389,19 @@ function handleCustomerSelect() {
   }
 }
 
+function togglePaymentDate() {
+  const status = document.getElementById('invStatus')?.value;
+  const group = document.getElementById('paymentDateGroup');
+  if (group) group.style.display = status === 'paid' ? 'block' : 'none';
+}
+
 function handleSaveInvoice(e) {
   e.preventDefault();
 
   const invoiceNumber = parseInt(document.getElementById('invNumber').value);
   const date = document.getElementById('invDate').value;
   const status = document.getElementById('invStatus').value;
+  const paymentDate = status === 'paid' ? (document.getElementById('invPaymentDate')?.value || '') : '';
   const paymentMode = document.getElementById('invPaymentMode').value;
   const paymentQrId = document.getElementById('invPaymentQr').value || '';
   const customerName = document.getElementById('custName').value.trim();
@@ -364,6 +410,8 @@ function handleSaveInvoice(e) {
   const customerId = document.getElementById('custSelect').value || '';
   const gstPercent = parseInt(document.getElementById('invGst').value || 0);
   const discount = parseFloat(document.getElementById('invDiscount').value || 0);
+  const receivedAmount = parseFloat(document.getElementById('invReceived').value || 0);
+  const receivedDate = receivedAmount > 0 ? (document.getElementById('invReceivedDate').value || '') : '';
   const notes = document.getElementById('invNotes').value.trim();
 
   // Validate items
@@ -376,6 +424,8 @@ function handleSaveInvoice(e) {
   const subtotal = validItems.reduce((sum, item) => sum + item.total, 0);
   const gstAmount = (subtotal * gstPercent) / 100;
   const grandTotal = subtotal + gstAmount - discount;
+
+  const balanceDue = Math.max(0, grandTotal - receivedAmount);
 
   const invoiceData = {
     invoiceNumber,
@@ -390,6 +440,10 @@ function handleSaveInvoice(e) {
     gstAmount,
     discount,
     grandTotal,
+    receivedAmount,
+    receivedDate,
+    balanceDue,
+    paymentDate,
     amountInWords: numberToWords(grandTotal),
     status,
     paymentMode,

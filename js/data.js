@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
     customers: 'billing_customers',
     products: 'billing_products',
     invoices: 'billing_invoices',
+    deletedInvoices: 'billing_deleted_invoices',
     counter: 'billing_counter',
     upiAccounts: 'billing_upi_accounts',
     initialized: 'billing_initialized'
@@ -120,11 +121,41 @@ function updateInvoice(id, updates) {
 }
 
 function deleteInvoice(id) {
+    const invoice = getInvoiceById(id);
+    if (!invoice) return;
+    const bin = getDeletedInvoices();
+    invoice.deletedAt = new Date().toISOString();
+    bin.push(invoice);
+    setStore(STORAGE_KEYS.deletedInvoices, bin);
     saveInvoices(getInvoices().filter(inv => inv.id !== id));
 }
 
 function getInvoiceById(id) {
     return getInvoices().find(inv => inv.id === id) || null;
+}
+
+// ─── Recycle Bin ─────────────────────
+function getDeletedInvoices() {
+    return getStore(STORAGE_KEYS.deletedInvoices) || [];
+}
+
+function restoreInvoice(id) {
+    const bin = getDeletedInvoices();
+    const invoice = bin.find(inv => inv.id === id);
+    if (!invoice) return;
+    delete invoice.deletedAt;
+    const active = getInvoices();
+    active.push(invoice);
+    saveInvoices(active);
+    setStore(STORAGE_KEYS.deletedInvoices, bin.filter(inv => inv.id !== id));
+}
+
+function permanentlyDeleteInvoice(id) {
+    setStore(STORAGE_KEYS.deletedInvoices, getDeletedInvoices().filter(inv => inv.id !== id));
+}
+
+function emptyRecycleBin() {
+    setStore(STORAGE_KEYS.deletedInvoices, []);
 }
 
 // ─── Invoice Counter ─────────────────────

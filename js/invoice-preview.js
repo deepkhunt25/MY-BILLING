@@ -70,6 +70,7 @@ function renderInvoicePreview(invoiceId) {
             <div class="inv-meta">
               <div class="inv-number">Invoice No.${invoice.invoiceNumber}</div>
               <div class="inv-date">Invoice Date: ${formatDate(invoice.date)}</div>
+              ${invoice.paymentDate ? `<div class="inv-date" style="color:#22c55e; font-weight:600;">Payment Date: ${formatDate(invoice.paymentDate)}</div>` : ''}
             </div>
           </div>
 
@@ -82,23 +83,39 @@ function renderInvoicePreview(invoiceId) {
               <div class="inv-cust-detail" style="font-style: italic;">GSTIN: ${invoice.customerGstin || '—'}</div>
             </div>
             <div class="inv-paid-stamp">
-              ${invoice.status === 'paid' ? `
-                <div class="status-badge paid-badge">
-                  <span class="badge-text-top">THANK YOU</span>
-                  <span class="badge-text-main">PAID</span>
-                  <span class="badge-text-bottom">✮ ✮ ✮</span>
-                </div>
-              ` : `
-                <div class="status-badge unpaid-badge">
-                  <span class="badge-text-top">PAYMENT</span>
-                  <span class="badge-text-main">DUE</span>
-                  <span class="badge-text-bottom">⚠ ⚠ ⚠</span>
-                </div>
-              `}
+              ${(() => {
+      const bal = invoice.balanceDue || Math.max(0, invoice.grandTotal - (invoice.receivedAmount || 0));
+      const hasPendingBalance = invoice.receivedAmount > 0 && bal > 0;
+      const showDue = hasPendingBalance || invoice.status === 'unpaid';
+      return showDue ? `
+                  <div class="status-badge unpaid-badge">
+                    <span class="badge-text-top">PAYMENT</span>
+                    <span class="badge-text-main">DUE</span>
+                    <span class="badge-text-bottom">⚠ ⚠ ⚠</span>
+                  </div>
+                ` : `
+                  <div class="status-badge paid-badge">
+                    <span class="badge-text-top">THANK YOU</span>
+                    <span class="badge-text-main">PAID</span>
+                    <span class="badge-text-bottom">✮ ✮ ✮</span>
+                  </div>
+                `;
+    })()}
               <div class="inv-paid-info">
-                <div class="inv-total-label">Total amount</div>
-                <div class="inv-total-big">${formatCurrency(invoice.grandTotal)}</div>
-                <div class="inv-total-words">${invoice.amountInWords}</div>
+                ${invoice.receivedAmount > 0 ? `
+                  <div class="inv-total-label">Balance Due</div>
+                  <div class="inv-total-big" style="color:#ef4444; display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+                    ${formatCurrency(invoice.balanceDue || Math.max(0, invoice.grandTotal - invoice.receivedAmount))}
+                    ${(invoice.balanceDue || Math.max(0, invoice.grandTotal - invoice.receivedAmount)) > 0 ? `
+                      <span style="font-size:0.55rem; font-weight:800; background:#ef4444; color:#fff; padding:2px 6px; border-radius:4px; letter-spacing:1px; vertical-align:middle;">⚠ DUE</span>
+                    ` : ''}
+                  </div>
+                  <div class="inv-total-words" style="font-size:0.7rem; opacity:0.7;">Grand Total: ${formatCurrency(invoice.grandTotal)}</div>
+                ` : `
+                  <div class="inv-total-label">Total amount</div>
+                  <div class="inv-total-big">${formatCurrency(invoice.grandTotal)}</div>
+                  <div class="inv-total-words">${invoice.amountInWords}</div>
+                `}
               </div>
             </div>
           </div>
@@ -166,9 +183,30 @@ function renderInvoicePreview(invoiceId) {
               </div>
             ` : ''}
             <div class="gt-content">
-              <div class="gt-label">Total amount</div>
-              <div class="gt-value">${formatCurrency(invoice.grandTotal)}</div>
-              <div class="gt-words">${invoice.amountInWords}</div>
+              ${invoice.receivedAmount > 0 ? `
+                <div style="display:flex; justify-content:space-between; font-size:0.82rem; opacity:0.75; margin-bottom:2px;">
+                  <span>Grand Total</span>
+                  <span>${formatCurrency(invoice.grandTotal)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:8px; padding-bottom:8px; border-bottom:1px dashed rgba(255,255,255,0.3);">
+                  <span style="opacity:0.75;">Received${invoice.receivedDate ? ' (' + formatDate(invoice.receivedDate) + ')' : ''}</span>
+                  <span style="color:#4ade80; font-weight:600;">- ${formatCurrency(invoice.receivedAmount)}</span>
+                </div>
+                <div class="gt-label" style="font-size:0.8rem; letter-spacing:1px;">Balance Due</div>
+                <div class="gt-value" style="color:#f87171; display:flex; align-items:center; gap:10px; justify-content:flex-end;">
+                  ${formatCurrency(invoice.balanceDue || Math.max(0, invoice.grandTotal - invoice.receivedAmount))}
+                  ${(invoice.balanceDue || Math.max(0, invoice.grandTotal - invoice.receivedAmount)) > 0 ? `
+                    <span style="font-size:0.5rem; font-weight:800; background:#ef4444; color:#fff; padding:3px 7px; border-radius:4px; letter-spacing:1.2px;">⚠ DUE</span>
+                  ` : `
+                    <span style="font-size:0.5rem; font-weight:800; background:#22c55e; color:#fff; padding:3px 7px; border-radius:4px; letter-spacing:1.2px;">✓ CLEAR</span>
+                  `}
+                </div>
+                <div class="gt-words">${numberToWords(invoice.balanceDue || Math.max(0, invoice.grandTotal - invoice.receivedAmount))}</div>
+              ` : `
+                <div class="gt-label">Total amount</div>
+                <div class="gt-value">${formatCurrency(invoice.grandTotal)}</div>
+                <div class="gt-words">${invoice.amountInWords}</div>
+              `}
             </div>
           </div>
 
