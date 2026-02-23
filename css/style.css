@@ -56,7 +56,9 @@
 }
 
 /* ─── Reset ────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -88,7 +90,9 @@ button {
   outline: none;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: inherit;
   font-size: inherit;
   border: none;
@@ -516,13 +520,33 @@ select.form-control {
   font-size: 0.87rem;
 }
 
-.items-table .col-num { width: 50px; }
-.items-table .col-name { min-width: 180px; }
-.items-table .col-price { width: 120px; }
-.items-table .col-unit { width: 90px; }
-.items-table .col-qty { width: 80px; }
-.items-table .col-total { width: 120px; }
-.items-table .col-action { width: 44px; }
+.items-table .col-num {
+  width: 50px;
+}
+
+.items-table .col-name {
+  min-width: 180px;
+}
+
+.items-table .col-price {
+  width: 120px;
+}
+
+.items-table .col-unit {
+  width: 90px;
+}
+
+.items-table .col-qty {
+  width: 80px;
+}
+
+.items-table .col-total {
+  width: 120px;
+}
+
+.items-table .col-action {
+  width: 44px;
+}
 
 .remove-item-btn {
   width: 32px;
@@ -694,11 +718,10 @@ select.form-control {
   gap: 12px;
 }
 
-.invoice-preview .paid-badge {
-  width: 72px;
-  height: 72px;
+.invoice-preview .status-badge {
+  width: 78px;
+  height: 78px;
   border-radius: 50%;
-  background: radial-gradient(circle, #00b894 60%, #019875);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -706,25 +729,38 @@ select.form-control {
   color: #fff;
   transform: rotate(-10deg);
   border: 3px solid #fff;
-  box-shadow: 0 2px 12px rgba(0, 184, 148, 0.3);
+  position: relative;
 }
 
-.invoice-preview .paid-badge .paid-text-top {
-  font-size: 0.45rem;
+.invoice-preview .paid-badge {
+  background: radial-gradient(circle, #00b894 55%, #00a884 75%, #019875);
+  box-shadow: 0 2px 16px rgba(0, 184, 148, 0.35), inset 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.invoice-preview .unpaid-badge {
+  background: radial-gradient(circle, #e94560 55%, #d63031 75%, #c0392b);
+  box-shadow: 0 2px 16px rgba(233, 69, 96, 0.35), inset 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.invoice-preview .status-badge .badge-text-top {
+  font-size: 0.42rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   margin-bottom: -1px;
+  opacity: 0.9;
 }
 
-.invoice-preview .paid-badge .paid-text-main {
+.invoice-preview .status-badge .badge-text-main {
   font-size: 1rem;
   font-weight: 900;
   letter-spacing: 2px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.invoice-preview .paid-badge .paid-text-bottom {
-  font-size: 0.6rem;
+.invoice-preview .status-badge .badge-text-bottom {
+  font-size: 0.58rem;
   margin-top: -2px;
+  opacity: 0.85;
 }
 
 .invoice-preview .inv-paid-info {
@@ -799,6 +835,17 @@ select.form-control {
   text-align: right;
 }
 
+.invoice-preview .inv-grand-total-with-qr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.invoice-preview .inv-grand-total .gt-content {
+  flex: 1;
+  text-align: right;
+}
+
 .invoice-preview .inv-grand-total .gt-label {
   font-size: 0.9rem;
   color: #666;
@@ -838,14 +885,7 @@ select.form-control {
   text-align: center;
 }
 
-.invoice-preview .inv-footer .inv-digital {
-  font-size: 0.85rem;
-  color: #999;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  margin-bottom: 20px;
-}
+/* No longer showing 'digitally created' text */
 
 .invoice-preview .inv-footer .inv-signature {
   text-align: right;
@@ -866,6 +906,77 @@ select.form-control {
 .invoice-preview .inv-footer-bar {
   height: 5px;
   background: var(--accent-gradient);
+}
+
+/* ─── Invoice QR Code (inline with total) ─ */
+
+.invoice-preview .inv-qr-box {
+  text-align: center;
+  padding: 16px;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.invoice-preview .inv-qr-img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.invoice-preview .inv-qr-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  margin-top: 8px;
+}
+
+.invoice-preview .inv-qr-detail {
+  font-size: 0.78rem;
+  color: #777;
+  margin-top: 2px;
+}
+
+/* ─── Invoice Logo ─────────────────────── */
+.invoice-preview .inv-logo-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* ─── Logo Upload Area ─────────────────── */
+.logo-upload-area {
+  width: 100%;
+  height: 100px;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+  background: var(--bg-input);
+}
+
+.logo-upload-area:hover {
+  border-color: var(--accent-primary);
+  background: rgba(233, 69, 96, 0.05);
+}
+
+.logo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.logo-preview-img {
+  max-height: 90px;
+  max-width: 200px;
+  object-fit: contain;
 }
 
 /* ─── PDF Action Bar ───────────────────── */
@@ -901,9 +1012,17 @@ select.form-control {
   opacity: 1;
 }
 
-.toast-success { border-left: 4px solid var(--status-paid); }
-.toast-error { border-left: 4px solid var(--accent-primary); }
-.toast-info { border-left: 4px solid var(--accent-blue-light); }
+.toast-success {
+  border-left: 4px solid var(--status-paid);
+}
+
+.toast-error {
+  border-left: 4px solid var(--accent-primary);
+}
+
+.toast-info {
+  border-left: 4px solid var(--accent-blue-light);
+}
 
 .toast-icon {
   font-size: 1.1rem;
@@ -1124,6 +1243,7 @@ select.form-control {
     opacity: 0;
     transform: translateY(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1197,7 +1317,9 @@ select.form-control {
     gap: 12px;
   }
 
-  .form-row, .form-row-3, .form-row-4 {
+  .form-row,
+  .form-row-3,
+  .form-row-4 {
     grid-template-columns: 1fr;
   }
 

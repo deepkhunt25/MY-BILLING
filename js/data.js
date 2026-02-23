@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
     products: 'billing_products',
     invoices: 'billing_invoices',
     counter: 'billing_counter',
+    upiAccounts: 'billing_upi_accounts',
     initialized: 'billing_initialized'
 };
 
@@ -127,39 +128,82 @@ function getInvoiceById(id) {
 }
 
 // ─── Invoice Counter ─────────────────────
-function getNextInvoiceNumber() {
-    const counter = getStore(STORAGE_KEYS.counter) || { lastInvoiceNumber: 100 };
-    counter.lastInvoiceNumber++;
-    setStore(STORAGE_KEYS.counter, counter);
-    return counter.lastInvoiceNumber;
+function peekNextInvoiceNumber() {
+    const invoices = getInvoices();
+    if (invoices.length === 0) return 101;
+    const maxNum = Math.max(...invoices.map(inv => inv.invoiceNumber || 0));
+    return maxNum + 1;
 }
 
-function getCurrentInvoiceNumber() {
-    const counter = getStore(STORAGE_KEYS.counter) || { lastInvoiceNumber: 100 };
-    return counter.lastInvoiceNumber;
+function commitInvoiceNumber(num) {
+    setStore(STORAGE_KEYS.counter, { lastInvoiceNumber: num });
+}
+
+// ─── UPI Accounts ─────────────────────
+function getUpiAccounts() {
+    return getStore(STORAGE_KEYS.upiAccounts) || [];
+}
+
+function saveUpiAccounts(list) {
+    setStore(STORAGE_KEYS.upiAccounts, list);
+}
+
+function addUpiAccount(account) {
+    const list = getUpiAccounts();
+    account.id = account.id || generateId('upi');
+    list.push(account);
+    saveUpiAccounts(list);
+    return account;
+}
+
+function updateUpiAccount(id, updates) {
+    const list = getUpiAccounts().map(a => a.id === id ? { ...a, ...updates } : a);
+    saveUpiAccounts(list);
+}
+
+function deleteUpiAccount(id) {
+    saveUpiAccounts(getUpiAccounts().filter(a => a.id !== id));
+}
+
+function getUpiAccountById(id) {
+    return getUpiAccounts().find(a => a.id === id) || null;
 }
 
 // ─── Search & Filter ─────────────────────
 function searchInvoices(query) {
     const q = query.toLowerCase().trim();
     if (!q) return getInvoices();
-    return getInvoices().filter(inv =>
-        inv.customerName.toLowerCase().includes(q) ||
-        String(inv.invoiceNumber).includes(q) ||
-        (inv.customerPhone && inv.customerPhone.includes(q))
-    );
+    return getInvoices().filter(inv => {
+        const modeLabel = getPaymentModeLabel(inv.paymentMode).toLowerCase();
+        return inv.customerName.toLowerCase().includes(q) ||
+            String(inv.invoiceNumber).includes(q) ||
+            (inv.customerPhone && inv.customerPhone.includes(q)) ||
+            modeLabel.includes(q);
+    });
 }
 
-function filterInvoices({ status, dateFrom, dateTo } = {}) {
+function getPaymentModeLabel(mode) {
+    const labels = { cash: 'Cash', upi: 'UPI', bank: 'Bank Transfer', other: 'Other' };
+    return labels[mode] || mode || '—';
+}
+
+function filterInvoices({ status, paymentMode, customer, year, month } = {}) {
     let list = getInvoices();
     if (status && status !== 'all') {
         list = list.filter(inv => inv.status === status);
     }
-    if (dateFrom) {
-        list = list.filter(inv => inv.date >= dateFrom);
+    if (paymentMode && paymentMode !== 'all') {
+        list = list.filter(inv => inv.paymentMode === paymentMode);
     }
-    if (dateTo) {
-        list = list.filter(inv => inv.date <= dateTo);
+    if (customer && customer !== 'all') {
+        list = list.filter(inv => inv.customerName === customer);
+    }
+    if (year && year !== 'all') {
+        list = list.filter(inv => inv.date && inv.date.startsWith(year));
+    }
+    if (month && month !== 'all' && year && year !== 'all') {
+        const mm = String(month).padStart(2, '0');
+        list = list.filter(inv => inv.date && inv.date.substring(5, 7) === mm);
     }
     return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
@@ -187,6 +231,7 @@ function exportAllData() {
         customers: getCustomers(),
         products: getProducts(),
         invoices: getInvoices(),
+        upiAccounts: getUpiAccounts(),
         counter: getStore(STORAGE_KEYS.counter),
         exportedAt: new Date().toISOString()
     }, null, 2);
@@ -199,6 +244,7 @@ function importAllData(jsonStr) {
         if (data.customers) saveCustomers(data.customers);
         if (data.products) saveProducts(data.products);
         if (data.invoices) saveInvoices(data.invoices);
+        if (data.upiAccounts) saveUpiAccounts(data.upiAccounts);
         if (data.counter) setStore(STORAGE_KEYS.counter, data.counter);
         return true;
     } catch (e) {

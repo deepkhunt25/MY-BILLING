@@ -3,18 +3,29 @@
 // ========================================
 
 function renderInvoicePreview(invoiceId) {
-    const invoice = getInvoiceById(invoiceId);
-    if (!invoice) {
-        showToast('Invoice not found', 'error');
-        navigateTo('history');
-        return;
-    }
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) {
+    showToast('Invoice not found', 'error');
+    navigateTo('history');
+    return;
+  }
 
-    const business = getBusiness();
-    const totalQty = invoice.items.reduce((s, item) => s + item.qty, 0);
+  const business = getBusiness();
+  const totalQty = invoice.items.reduce((s, item) => s + item.qty, 0);
 
-    const app = document.getElementById('app');
-    app.innerHTML = `
+  // Get QR code if selected
+  let qrAccount = null;
+  if (invoice.paymentQrId) {
+    qrAccount = getUpiAccountById(invoice.paymentQrId);
+  }
+
+  // Business logo
+  const logoHtml = business.logo
+    ? `<img src="${business.logo}" alt="${business.name}" class="inv-logo-img">`
+    : `<span class="inv-avatar">${business.name.charAt(0).toUpperCase()}</span>`;
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
     <div class="page-enter">
       <div class="page-header">
         <div>
@@ -37,7 +48,7 @@ function renderInvoicePreview(invoiceId) {
         <button class="btn btn-secondary" onclick="navigateTo('edit/${invoiceId}')">
           ✏️ Edit
         </button>
-        <button class="btn btn-secondary" onclick="shareWhatsApp('${invoiceId}')">
+        <button class="btn btn-secondary" onclick="showShareModal('${invoiceId}')">
           💬 Share WhatsApp
         </button>
       </div>
@@ -50,7 +61,7 @@ function renderInvoicePreview(invoiceId) {
           <div class="inv-header">
             <div class="inv-business">
               <div class="inv-name">
-                <span class="inv-avatar">${business.name.charAt(0).toUpperCase()}</span>
+                ${logoHtml}
                 ${business.name}
               </div>
               <div class="inv-detail">${business.address}</div>
@@ -62,7 +73,7 @@ function renderInvoicePreview(invoiceId) {
             </div>
           </div>
 
-          <!-- Customer + Paid -->
+          <!-- Customer + Status Badge -->
           <div class="inv-customer-section">
             <div class="inv-customer">
               <div class="inv-cust-label">Bill and Ship To</div>
@@ -72,12 +83,18 @@ function renderInvoicePreview(invoiceId) {
             </div>
             <div class="inv-paid-stamp">
               ${invoice.status === 'paid' ? `
-                <div class="paid-badge">
-                  <span class="paid-text-top">THANK YOU</span>
-                  <span class="paid-text-main">PAID</span>
-                  <span class="paid-text-bottom">✮ ✮ ✮</span>
+                <div class="status-badge paid-badge">
+                  <span class="badge-text-top">THANK YOU</span>
+                  <span class="badge-text-main">PAID</span>
+                  <span class="badge-text-bottom">✮ ✮ ✮</span>
                 </div>
-              ` : ''}
+              ` : `
+                <div class="status-badge unpaid-badge">
+                  <span class="badge-text-top">PAYMENT</span>
+                  <span class="badge-text-main">DUE</span>
+                  <span class="badge-text-bottom">⚠ ⚠ ⚠</span>
+                </div>
+              `}
               <div class="inv-paid-info">
                 <div class="inv-total-label">Total amount</div>
                 <div class="inv-total-big">${formatCurrency(invoice.grandTotal)}</div>
@@ -138,16 +155,25 @@ function renderInvoicePreview(invoiceId) {
             </div>
           ` : ''}
 
-          <!-- Grand Total -->
-          <div class="inv-grand-total">
-            <div class="gt-label">Total amount</div>
-            <div class="gt-value">${formatCurrency(invoice.grandTotal)}</div>
-            <div class="gt-words">${invoice.amountInWords}</div>
+          <!-- Grand Total + QR Code (inline) -->
+          <div class="inv-grand-total ${qrAccount && qrAccount.qrDataUrl ? 'inv-grand-total-with-qr' : ''}">
+            ${qrAccount && qrAccount.qrDataUrl ? `
+              <div class="inv-qr-box">
+                <img src="${qrAccount.qrDataUrl}" alt="Payment QR" class="inv-qr-img">
+                <div class="inv-qr-label">Scan to Pay</div>
+                <div class="inv-qr-detail">${qrAccount.label}</div>
+                ${qrAccount.upiId ? `<div class="inv-qr-detail">${qrAccount.upiId}</div>` : ''}
+              </div>
+            ` : ''}
+            <div class="gt-content">
+              <div class="gt-label">Total amount</div>
+              <div class="gt-value">${formatCurrency(invoice.grandTotal)}</div>
+              <div class="gt-words">${invoice.amountInWords}</div>
+            </div>
           </div>
 
           <!-- Footer -->
           <div class="inv-footer">
-            <div class="inv-digital">~ THIS IS A DIGITALLY CREATED INVOICE ~</div>
             <div class="inv-signature">AUTHORISED SIGNATURE</div>
             <div class="inv-thankyou">Thank you for the business.</div>
           </div>
@@ -159,56 +185,139 @@ function renderInvoicePreview(invoiceId) {
 }
 
 function downloadInvoicePDF(invoiceId) {
-    const invoice = getInvoiceById(invoiceId);
-    if (!invoice) return;
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
 
-    const element = document.getElementById('invoicePrintArea');
-    if (!element) return;
+  const element = document.getElementById('invoicePrintArea');
+  if (!element) return;
 
-    const opt = {
-        margin: [0, 0, 0, 0],
-        filename: `Invoice_${invoice.invoiceNumber}_${invoice.customerName.replace(/\s+/g, '_')}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+  const opt = {
+    margin: [0, 0, 0, 0],
+    filename: `Invoice_${invoice.invoiceNumber}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
 
-    // Check if html2pdf is available
-    if (typeof html2pdf !== 'undefined') {
-        showToast('Generating PDF...', 'info');
-        html2pdf().set(opt).from(element).save().then(() => {
-            showToast('PDF downloaded successfully!');
-        }).catch(err => {
-            console.error('PDF error:', err);
-            showToast('PDF generation failed. Try printing instead.', 'error');
-        });
-    } else {
-        showToast('PDF library not loaded. Using print dialog instead.', 'info');
-        window.print();
-    }
+  // Check if html2pdf is available
+  if (typeof html2pdf !== 'undefined') {
+    showToast('Generating PDF...', 'info');
+    html2pdf().set(opt).from(element).save().then(() => {
+      showToast('PDF downloaded successfully!');
+    }).catch(err => {
+      console.error('PDF error:', err);
+      showToast('PDF generation failed. Try printing instead.', 'error');
+    });
+  } else {
+    showToast('PDF library not loaded. Using print dialog instead.', 'info');
+    window.print();
+  }
 }
 
-function shareWhatsApp(invoiceId) {
-    const invoice = getInvoiceById(invoiceId);
-    if (!invoice) return;
+function downloadInvoiceImage(invoiceId) {
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
 
-    const business = getBusiness();
-    const message = encodeURIComponent(
-        `*Invoice #${invoice.invoiceNumber}*\n` +
-        `From: ${business.name}\n` +
-        `To: ${invoice.customerName}\n` +
-        `Date: ${formatDate(invoice.date)}\n` +
-        `Amount: ${formatCurrency(invoice.grandTotal)}\n` +
-        `Status: ${invoice.status.toUpperCase()}\n\n` +
-        `Items:\n` +
-        invoice.items.map((item, i) => `${i + 1}. ${item.name} x${item.qty} = ${formatCurrency(item.total)}`).join('\n') +
-        `\n\nThank you for your business!`
-    );
+  const element = document.getElementById('invoicePrintArea');
+  if (!element) return;
 
-    const phone = invoice.customerPhone ? invoice.customerPhone.replace(/\D/g, '') : '';
-    const url = phone
-        ? `https://wa.me/91${phone}?text=${message}`
-        : `https://wa.me/?text=${message}`;
+  if (typeof html2pdf !== 'undefined') {
+    showToast('Generating image...', 'info');
+    // Use html2canvas directly from html2pdf's bundle
+    import('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js').catch(() => { });
+    // html2pdf bundles html2canvas, so we can use it
+    const worker = html2pdf().set({
+      image: { type: 'png', quality: 1 },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true }
+    }).from(element);
 
-    window.open(url, '_blank');
+    worker.toCanvas().then(canvas => {
+      const link = document.createElement('a');
+      link.download = `Invoice_${invoice.invoiceNumber}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      showToast('Image downloaded successfully!');
+    }).catch(err => {
+      console.error('Image error:', err);
+      showToast('Image generation failed.', 'error');
+    });
+  } else {
+    showToast('Library not loaded.', 'error');
+  }
+}
+
+// ─── Share Modal (Change 8) ─────────────
+function showShareModal(invoiceId) {
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+      <div class="modal-box" style="max-width: 440px;">
+        <div class="modal-icon">💬</div>
+        <p class="modal-message">How would you like to share this invoice via WhatsApp?</p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="btn btn-primary" onclick="shareWhatsAppText('${invoiceId}'); this.closest('.modal-overlay').remove();">
+            📝 Send Text Summary
+          </button>
+          <button class="btn btn-secondary" onclick="shareWhatsAppWithPDF('${invoiceId}'); this.closest('.modal-overlay').remove();">
+            📄 Download PDF + Open WhatsApp
+          </button>
+          <button class="btn btn-secondary" onclick="shareWhatsAppWithImage('${invoiceId}'); this.closest('.modal-overlay').remove();">
+            🖼 Download Image + Open WhatsApp
+          </button>
+          <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove();">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('modal-show'));
+}
+
+function getWhatsAppUrl(invoice) {
+  const business = getBusiness();
+  const message = encodeURIComponent(
+    `*Invoice #${invoice.invoiceNumber}*\n` +
+    `From: ${business.name}\n` +
+    `To: ${invoice.customerName}\n` +
+    `Date: ${formatDate(invoice.date)}\n` +
+    `Amount: ${formatCurrency(invoice.grandTotal)}\n` +
+    `Status: ${invoice.status.toUpperCase()}\n\n` +
+    `Items:\n` +
+    invoice.items.map((item, i) => `${i + 1}. ${item.name} x${item.qty} = ${formatCurrency(item.total)}`).join('\n') +
+    `\n\nThank you for your business!`
+  );
+  const phone = invoice.customerPhone ? invoice.customerPhone.replace(/\D/g, '') : '';
+  return phone
+    ? `https://wa.me/91${phone}?text=${message}`
+    : `https://wa.me/?text=${message}`;
+}
+
+function shareWhatsAppText(invoiceId) {
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
+  window.open(getWhatsAppUrl(invoice), '_blank');
+}
+
+function shareWhatsAppWithPDF(invoiceId) {
+  downloadInvoicePDF(invoiceId);
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
+  setTimeout(() => {
+    showToast('PDF downloaded! Opening WhatsApp — please attach the PDF manually.', 'info');
+    window.open(getWhatsAppUrl(invoice), '_blank');
+  }, 2000);
+}
+
+function shareWhatsAppWithImage(invoiceId) {
+  downloadInvoiceImage(invoiceId);
+  const invoice = getInvoiceById(invoiceId);
+  if (!invoice) return;
+  setTimeout(() => {
+    showToast('Image downloaded! Opening WhatsApp — please attach the image manually.', 'info');
+    window.open(getWhatsAppUrl(invoice), '_blank');
+  }, 2000);
 }

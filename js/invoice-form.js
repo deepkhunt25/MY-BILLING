@@ -6,26 +6,30 @@ let currentItems = [];
 let editingInvoiceId = null;
 
 function renderInvoiceForm(invoiceId) {
-    editingInvoiceId = invoiceId || null;
-    const customers = getCustomers();
-    const products = getProducts();
-    const isEdit = !!editingInvoiceId;
-    let invoice = null;
+  editingInvoiceId = invoiceId || null;
+  const customers = getCustomers();
+  const products = getProducts();
+  const upiAccounts = getUpiAccounts();
+  const isEdit = !!editingInvoiceId;
+  let invoice = null;
 
-    if (isEdit) {
-        invoice = getInvoiceById(editingInvoiceId);
-        if (!invoice) {
-            showToast('Invoice not found', 'error');
-            navigateTo('history');
-            return;
-        }
-        currentItems = [...invoice.items];
-    } else {
-        currentItems = [{ name: '', pricePerUnit: 0, unit: 'NOS', qty: 1, total: 0 }];
+  if (isEdit) {
+    invoice = getInvoiceById(editingInvoiceId);
+    if (!invoice) {
+      showToast('Invoice not found', 'error');
+      navigateTo('history');
+      return;
     }
+    currentItems = [...invoice.items];
+  } else {
+    currentItems = [{ name: '', pricePerUnit: 0, unit: 'NOS', qty: 1, total: 0 }];
+  }
 
-    const app = document.getElementById('app');
-    app.innerHTML = `
+  // Use peekNextInvoiceNumber (read-only) for new invoices
+  const invNumber = isEdit ? invoice.invoiceNumber : peekNextInvoiceNumber();
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
     <div class="page-enter">
       <div class="page-header">
         <div>
@@ -44,7 +48,7 @@ function renderInvoiceForm(invoiceId) {
             <div class="form-group">
               <label>Invoice Number</label>
               <input type="text" class="form-control" id="invNumber" 
-                value="${isEdit ? invoice.invoiceNumber : getNextInvoiceNumber()}" readonly
+                value="${invNumber}" readonly
                 style="opacity: 0.7; cursor: not-allowed;">
             </div>
             <div class="form-group">
@@ -144,7 +148,7 @@ function renderInvoiceForm(invoiceId) {
           ` : ''}
         </div>
 
-        <!-- GST & Totals -->
+        <!-- GST & Totals + Payment QR -->
         <div class="card" style="margin-bottom: 20px;">
           <div class="form-row">
             <div class="form-group">
@@ -161,6 +165,15 @@ function renderInvoiceForm(invoiceId) {
               <label>Discount (₹)</label>
               <input type="number" class="form-control" id="invDiscount" 
                 value="${isEdit ? invoice.discount : 0}" min="0" step="1" onchange="recalculateTotals()">
+            </div>
+            <div class="form-group">
+              <label>Payment QR Code</label>
+              <select class="form-control" id="invPaymentQr">
+                <option value="">None</option>
+                ${upiAccounts.map(a => `
+                  <option value="${a.id}" ${isEdit && invoice.paymentQrId === a.id ? 'selected' : ''}>${a.label}</option>
+                `).join('')}
+              </select>
             </div>
             <div class="form-group">
               <label>Notes</label>
@@ -207,20 +220,20 @@ function renderInvoiceForm(invoiceId) {
     </div>
   `;
 
-    renderItemRows();
-    recalculateTotals();
+  renderItemRows();
+  recalculateTotals();
 
-    // Auto-fill customer if editing
-    if (isEdit && invoice.customerId) {
-        document.getElementById('custSelect').value = invoice.customerId;
-    }
+  // Auto-fill customer if editing
+  if (isEdit && invoice.customerId) {
+    document.getElementById('custSelect').value = invoice.customerId;
+  }
 }
 
 function renderItemRows() {
-    const tbody = document.getElementById('itemsBody');
-    if (!tbody) return;
+  const tbody = document.getElementById('itemsBody');
+  if (!tbody) return;
 
-    tbody.innerHTML = currentItems.map((item, i) => `
+  tbody.innerHTML = currentItems.map((item, i) => `
     <tr>
       <td>${String(i + 1).padStart(2, '0')}</td>
       <td>
@@ -254,152 +267,156 @@ function renderItemRows() {
 }
 
 function addItemRow() {
-    currentItems.push({ name: '', pricePerUnit: 0, unit: 'NOS', qty: 1, total: 0 });
-    renderItemRows();
+  currentItems.push({ name: '', pricePerUnit: 0, unit: 'NOS', qty: 1, total: 0 });
+  renderItemRows();
 }
 
 function addProductItem(productId) {
-    const product = getProducts().find(p => p.id === productId);
-    if (!product) return;
-    currentItems.push({
-        name: product.name,
-        pricePerUnit: product.defaultPrice,
-        unit: product.unit,
-        qty: 1,
-        total: product.defaultPrice
-    });
-    renderItemRows();
-    recalculateTotals();
+  const product = getProducts().find(p => p.id === productId);
+  if (!product) return;
+  currentItems.push({
+    name: product.name,
+    pricePerUnit: product.defaultPrice,
+    unit: product.unit,
+    qty: 1,
+    total: product.defaultPrice
+  });
+  renderItemRows();
+  recalculateTotals();
 }
 
 function removeItem(index) {
-    if (currentItems.length <= 1) return;
-    currentItems.splice(index, 1);
-    renderItemRows();
-    recalculateTotals();
+  if (currentItems.length <= 1) return;
+  currentItems.splice(index, 1);
+  renderItemRows();
+  recalculateTotals();
 }
 
 function updateItem(index, field, value) {
-    currentItems[index][field] = value;
-    if (field === 'pricePerUnit' || field === 'qty') {
-        currentItems[index].total = currentItems[index].pricePerUnit * currentItems[index].qty;
-        renderItemRows();
-    }
-    recalculateTotals();
+  currentItems[index][field] = value;
+  if (field === 'pricePerUnit' || field === 'qty') {
+    currentItems[index].total = currentItems[index].pricePerUnit * currentItems[index].qty;
+    renderItemRows();
+  }
+  recalculateTotals();
 }
 
 function recalculateTotals() {
-    const subtotal = currentItems.reduce((sum, item) => sum + (item.pricePerUnit * item.qty), 0);
-    const gstPercent = parseInt(document.getElementById('invGst')?.value || 0);
-    const discount = parseFloat(document.getElementById('invDiscount')?.value || 0);
+  const subtotal = currentItems.reduce((sum, item) => sum + (item.pricePerUnit * item.qty), 0);
+  const gstPercent = parseInt(document.getElementById('invGst')?.value || 0);
+  const discount = parseFloat(document.getElementById('invDiscount')?.value || 0);
 
-    const gstAmount = (subtotal * gstPercent) / 100;
-    const grandTotal = subtotal + gstAmount - discount;
+  const gstAmount = (subtotal * gstPercent) / 100;
+  const grandTotal = subtotal + gstAmount - discount;
 
-    // Update totals in items array
-    currentItems.forEach(item => {
-        item.total = item.pricePerUnit * item.qty;
-    });
+  // Update totals in items array
+  currentItems.forEach(item => {
+    item.total = item.pricePerUnit * item.qty;
+  });
 
-    // Update display
-    const elSub = document.getElementById('displaySubtotal');
-    const elGst = document.getElementById('displayGst');
-    const elGstLabel = document.getElementById('gstLabel');
-    const elGstRow = document.getElementById('gstRow');
-    const elDisc = document.getElementById('displayDiscount');
-    const elDiscRow = document.getElementById('discountRow');
-    const elTotal = document.getElementById('displayGrandTotal');
-    const elWords = document.getElementById('displayAmountWords');
+  // Update display
+  const elSub = document.getElementById('displaySubtotal');
+  const elGst = document.getElementById('displayGst');
+  const elGstLabel = document.getElementById('gstLabel');
+  const elGstRow = document.getElementById('gstRow');
+  const elDisc = document.getElementById('displayDiscount');
+  const elDiscRow = document.getElementById('discountRow');
+  const elTotal = document.getElementById('displayGrandTotal');
+  const elWords = document.getElementById('displayAmountWords');
 
-    if (elSub) elSub.textContent = formatCurrency(subtotal);
-    if (elGst) elGst.textContent = formatCurrency(gstAmount);
-    if (elGstLabel) elGstLabel.textContent = `GST (${gstPercent}%)`;
-    if (elGstRow) elGstRow.style.display = gstPercent > 0 ? 'flex' : 'none';
-    if (elDisc) elDisc.textContent = `-${formatCurrency(discount)}`;
-    if (elDiscRow) elDiscRow.style.display = discount > 0 ? 'flex' : 'none';
-    if (elTotal) elTotal.textContent = formatCurrency(grandTotal);
-    if (elWords) elWords.textContent = numberToWords(grandTotal);
+  if (elSub) elSub.textContent = formatCurrency(subtotal);
+  if (elGst) elGst.textContent = formatCurrency(gstAmount);
+  if (elGstLabel) elGstLabel.textContent = `GST (${gstPercent}%)`;
+  if (elGstRow) elGstRow.style.display = gstPercent > 0 ? 'flex' : 'none';
+  if (elDisc) elDisc.textContent = `-${formatCurrency(discount)}`;
+  if (elDiscRow) elDiscRow.style.display = discount > 0 ? 'flex' : 'none';
+  if (elTotal) elTotal.textContent = formatCurrency(grandTotal);
+  if (elWords) elWords.textContent = numberToWords(grandTotal);
 }
 
 function handleCustomerSelect() {
-    const sel = document.getElementById('custSelect');
-    if (!sel.value) {
-        document.getElementById('custName').value = '';
-        document.getElementById('custPhone').value = '';
-        document.getElementById('custGstin').value = '';
-        return;
-    }
-    const customer = getCustomerById(sel.value);
-    if (customer) {
-        document.getElementById('custName').value = customer.name;
-        document.getElementById('custPhone').value = customer.phone || '';
-        document.getElementById('custGstin').value = customer.gstin || '';
-    }
+  const sel = document.getElementById('custSelect');
+  if (!sel.value) {
+    document.getElementById('custName').value = '';
+    document.getElementById('custPhone').value = '';
+    document.getElementById('custGstin').value = '';
+    return;
+  }
+  const customer = getCustomerById(sel.value);
+  if (customer) {
+    document.getElementById('custName').value = customer.name;
+    document.getElementById('custPhone').value = customer.phone || '';
+    document.getElementById('custGstin').value = customer.gstin || '';
+  }
 }
 
 function handleSaveInvoice(e) {
-    e.preventDefault();
+  e.preventDefault();
 
-    const invoiceNumber = parseInt(document.getElementById('invNumber').value);
-    const date = document.getElementById('invDate').value;
-    const status = document.getElementById('invStatus').value;
-    const paymentMode = document.getElementById('invPaymentMode').value;
-    const customerName = document.getElementById('custName').value.trim();
-    const customerPhone = document.getElementById('custPhone').value.trim();
-    const customerGstin = document.getElementById('custGstin').value.trim();
-    const customerId = document.getElementById('custSelect').value || '';
-    const gstPercent = parseInt(document.getElementById('invGst').value || 0);
-    const discount = parseFloat(document.getElementById('invDiscount').value || 0);
-    const notes = document.getElementById('invNotes').value.trim();
+  const invoiceNumber = parseInt(document.getElementById('invNumber').value);
+  const date = document.getElementById('invDate').value;
+  const status = document.getElementById('invStatus').value;
+  const paymentMode = document.getElementById('invPaymentMode').value;
+  const paymentQrId = document.getElementById('invPaymentQr').value || '';
+  const customerName = document.getElementById('custName').value.trim();
+  const customerPhone = document.getElementById('custPhone').value.trim();
+  const customerGstin = document.getElementById('custGstin').value.trim();
+  const customerId = document.getElementById('custSelect').value || '';
+  const gstPercent = parseInt(document.getElementById('invGst').value || 0);
+  const discount = parseFloat(document.getElementById('invDiscount').value || 0);
+  const notes = document.getElementById('invNotes').value.trim();
 
-    // Validate items
-    const validItems = currentItems.filter(item => item.name.trim());
-    if (validItems.length === 0) {
-        showToast('Please add at least one item', 'error');
-        return;
-    }
+  // Validate items
+  const validItems = currentItems.filter(item => item.name.trim());
+  if (validItems.length === 0) {
+    showToast('Please add at least one item', 'error');
+    return;
+  }
 
-    const subtotal = validItems.reduce((sum, item) => sum + item.total, 0);
-    const gstAmount = (subtotal * gstPercent) / 100;
-    const grandTotal = subtotal + gstAmount - discount;
+  const subtotal = validItems.reduce((sum, item) => sum + item.total, 0);
+  const gstAmount = (subtotal * gstPercent) / 100;
+  const grandTotal = subtotal + gstAmount - discount;
 
-    const invoiceData = {
-        invoiceNumber,
-        date,
-        customerId,
-        customerName,
-        customerPhone,
-        customerGstin,
-        items: validItems,
-        subtotal,
-        gstPercent,
-        gstAmount,
-        discount,
-        grandTotal,
-        amountInWords: numberToWords(grandTotal),
-        status,
-        paymentMode,
-        notes
-    };
+  const invoiceData = {
+    invoiceNumber,
+    date,
+    customerId,
+    customerName,
+    customerPhone,
+    customerGstin,
+    items: validItems,
+    subtotal,
+    gstPercent,
+    gstAmount,
+    discount,
+    grandTotal,
+    amountInWords: numberToWords(grandTotal),
+    status,
+    paymentMode,
+    paymentQrId,
+    notes
+  };
 
-    // Save customer if new
-    if (!customerId && customerName) {
-        const newCust = addCustomer({
-            name: customerName,
-            phone: customerPhone,
-            gstin: customerGstin,
-            address: ''
-        });
-        invoiceData.customerId = newCust.id;
-    }
+  // Save customer if new
+  if (!customerId && customerName) {
+    const newCust = addCustomer({
+      name: customerName,
+      phone: customerPhone,
+      gstin: customerGstin,
+      address: ''
+    });
+    invoiceData.customerId = newCust.id;
+  }
 
-    if (editingInvoiceId) {
-        updateInvoice(editingInvoiceId, invoiceData);
-        showToast('Invoice updated successfully!');
-        navigateTo('preview/' + editingInvoiceId);
-    } else {
-        const saved = addInvoice(invoiceData);
-        showToast('Invoice created successfully!');
-        navigateTo('preview/' + saved.id);
-    }
+  if (editingInvoiceId) {
+    updateInvoice(editingInvoiceId, invoiceData);
+    showToast('Invoice updated successfully!');
+    navigateTo('preview/' + editingInvoiceId);
+  } else {
+    // Commit the invoice number only on actual save
+    commitInvoiceNumber(invoiceNumber);
+    const saved = addInvoice(invoiceData);
+    showToast('Invoice created successfully!');
+    navigateTo('preview/' + saved.id);
+  }
 }
