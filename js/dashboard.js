@@ -3,11 +3,11 @@
 // ========================================
 
 function renderDashboard() {
-    const stats = getStats();
-    const invoices = getInvoices().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+  const stats = getStats();
+  const invoices = getInvoices().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
 
-    const app = document.getElementById('app');
-    app.innerHTML = `
+  const app = document.getElementById('app');
+  app.innerHTML = `
     <div class="page-enter">
       <div class="page-header">
         <div>
@@ -38,6 +38,11 @@ function renderDashboard() {
         </div>
         <div class="stat-card">
           <div class="stat-icon">⏳</div>
+          <div class="stat-value">${stats.dueCount}</div>
+          <div class="stat-label">Due (${formatCurrency(stats.dueAmount)})</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🔴</div>
           <div class="stat-value">${stats.unpaidCount}</div>
           <div class="stat-label">Unpaid (${formatCurrency(stats.unpaidAmount)})</div>
         </div>
@@ -90,7 +95,11 @@ function renderDashboard() {
                     <td>${formatDate(inv.date)}</td>
                     <td class="text-right"><strong>${formatCurrency(inv.grandTotal)}</strong></td>
                     <td class="text-center">
-                      <span class="badge badge-${inv.status}">${inv.status === 'paid' ? '✓ Paid' : '◷ Unpaid'}</span>
+                      ${(() => {
+      if (inv.status === 'paid') return '<span class="badge badge-paid">✓ Paid</span>';
+      if (inv.status === 'due') return '<span class="badge badge-due">⏳ Due</span>';
+      return '<span class="badge badge-unpaid">◷ Unpaid</span>';
+    })()}
                     </td>
                     <td class="text-center">
                       <button class="btn-icon" onclick="navigateTo('preview/${inv.id}')" title="View">👁</button>

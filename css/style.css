@@ -494,6 +494,11 @@ select.form-control {
   color: var(--status-unpaid);
 }
 
+.badge-due {
+  background: rgba(251, 191, 36, 0.15);
+  color: #f59e0b;
+}
+
 /* ─── Invoice Items Table (Form) ──────── */
 .items-table {
   width: 100%;

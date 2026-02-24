@@ -75,6 +75,7 @@ function renderHistory() {
             <select class="form-control" id="filterStatus" onchange="handleHistoryFilter()">
               <option value="all">All Status</option>
               <option value="paid">Paid</option>
+              <option value="due">Due</option>
               <option value="unpaid">Unpaid</option>
             </select>
           </div>
@@ -130,7 +131,11 @@ function renderHistoryTable(invoices) {
                 <span style="font-size: 0.85rem;">${modeIcons[inv.paymentMode] || ''} ${getPaymentModeLabel(inv.paymentMode)}</span>
               </td>
               <td class="text-center">
-                <span class="badge badge-${inv.status}">${inv.status === 'paid' ? '✓ Paid' : '◷ Unpaid'}</span>
+                ${(() => {
+      if (inv.status === 'paid') return '<span class="badge badge-paid">✓ Paid</span>';
+      if (inv.status === 'due') return '<span class="badge badge-due">⏳ Due</span>';
+      return '<span class="badge badge-unpaid">◷ Unpaid</span>';
+    })()}
               </td>
               <td class="text-center">
                 <div style="display: flex; gap: 4px; justify-content: center;">

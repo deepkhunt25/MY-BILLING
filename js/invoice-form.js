@@ -400,7 +400,14 @@ function handleSaveInvoice(e) {
 
   const invoiceNumber = parseInt(document.getElementById('invNumber').value);
   const date = document.getElementById('invDate').value;
-  const status = document.getElementById('invStatus').value;
+  // Auto-derive status from received amount vs total
+  const receivedAmountForStatus = parseFloat(document.getElementById('invReceived').value || 0);
+  const subtotalForStatus = currentItems.filter(i => i.name.trim()).reduce((s, i) => s + i.total, 0);
+  const gstPercentForStatus = parseInt(document.getElementById('invGst').value || 0);
+  const discountForStatus = parseFloat(document.getElementById('invDiscount').value || 0);
+  const grandTotalForStatus = subtotalForStatus + (subtotalForStatus * gstPercentForStatus / 100) - discountForStatus;
+  const balanceForStatus = Math.max(0, grandTotalForStatus - receivedAmountForStatus);
+  const status = receivedAmountForStatus <= 0 ? 'unpaid' : (balanceForStatus > 0 ? 'due' : 'paid');
   const paymentDate = status === 'paid' ? (document.getElementById('invPaymentDate')?.value || '') : '';
   const paymentMode = document.getElementById('invPaymentMode').value;
   const paymentQrId = document.getElementById('invPaymentQr').value || '';

@@ -244,13 +244,16 @@ function getStats() {
     const invoices = getInvoices();
     const total = invoices.reduce((s, inv) => s + inv.grandTotal, 0);
     const paid = invoices.filter(inv => inv.status === 'paid');
+    const due = invoices.filter(inv => inv.status === 'due');
     const unpaid = invoices.filter(inv => inv.status === 'unpaid');
     return {
         totalRevenue: total,
         invoiceCount: invoices.length,
         paidCount: paid.length,
+        dueCount: due.length,
         unpaidCount: unpaid.length,
         paidAmount: paid.reduce((s, inv) => s + inv.grandTotal, 0),
+        dueAmount: due.reduce((s, inv) => s + (inv.balanceDue || Math.max(0, inv.grandTotal - (inv.receivedAmount || 0))), 0),
         unpaidAmount: unpaid.reduce((s, inv) => s + inv.grandTotal, 0)
     };
 }
