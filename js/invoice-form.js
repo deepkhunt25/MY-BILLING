@@ -395,7 +395,7 @@ function togglePaymentDate() {
   if (group) group.style.display = status === 'paid' ? 'block' : 'none';
 }
 
-function handleSaveInvoice(e) {
+async function handleSaveInvoice(e) {
   e.preventDefault();
 
   const invoiceNumber = parseInt(document.getElementById('invNumber').value);
@@ -460,7 +460,7 @@ function handleSaveInvoice(e) {
 
   // Save customer if new
   if (!customerId && customerName) {
-    const newCust = addCustomer({
+    const newCust = await addCustomer({
       name: customerName,
       phone: customerPhone,
       gstin: customerGstin,
@@ -470,13 +470,13 @@ function handleSaveInvoice(e) {
   }
 
   if (editingInvoiceId) {
-    updateInvoice(editingInvoiceId, invoiceData);
+    await updateInvoice(editingInvoiceId, invoiceData);
     showToast('Invoice updated successfully!');
     navigateTo('preview/' + editingInvoiceId);
   } else {
     // Commit the invoice number only on actual save
-    commitInvoiceNumber(invoiceNumber);
-    const saved = addInvoice(invoiceData);
+    await commitInvoiceNumber(invoiceNumber);
+    const saved = await addInvoice(invoiceData);
     showToast('Invoice created successfully!');
     navigateTo('preview/' + saved.id);
   }

@@ -1,203 +1,241 @@
 // ========================================
-// DATA.JS — localStorage CRUD Layer
+// DATA.JS — Server API Layer (replaces localStorage)
+// All data is stored on the Node.js server (data/db.json)
 // ========================================
 
-const STORAGE_KEYS = {
-    business: 'billing_business',
-    customers: 'billing_customers',
-    products: 'billing_products',
-    invoices: 'billing_invoices',
-    deletedInvoices: 'billing_deleted_invoices',
-    counter: 'billing_counter',
-    upiAccounts: 'billing_upi_accounts',
-    initialized: 'billing_initialized'
+const API = '/api';
+
+// ─── Generic API Helpers ─────────────────────
+async function apiGet(endpoint) {
+    const res = await fetch(API + endpoint);
+    if (!res.ok) throw new Error('API Error: ' + endpoint);
+    return res.json();
+}
+
+async function apiPost(endpoint, body) {
+    const res = await fetch(API + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error('API Error: ' + endpoint);
+    return res.json();
+}
+
+async function apiPut(endpoint, body) {
+    const res = await fetch(API + endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error('API Error: ' + endpoint);
+    return res.json();
+}
+
+async function apiDelete(endpoint) {
+    const res = await fetch(API + endpoint, { method: 'DELETE' });
+    if (!res.ok) throw new Error('API Error: ' + endpoint);
+    return res.json();
+}
+
+// ─── In-memory cache (sync access for rendering) ─────────────────────
+let _cache = {
+    business: { name: 'Your Business', address: '', phone: '', gstin: '', logo: null },
+    customers: [],
+    products: [],
+    invoices: [],
+    deletedInvoices: [],
+    upiAccounts: [],
+    stats: { totalRevenue: 0, invoiceCount: 0, paidCount: 0, dueCount: 0, unpaidCount: 0, paidAmount: 0, dueAmount: 0, unpaidAmount: 0 }
 };
 
-// ─── Generic Storage ─────────────────────
-function getStore(key) {
+// Load all data from server into cache
+async function loadAllData() {
     try {
-        return JSON.parse(localStorage.getItem(key));
-    } catch {
-        return null;
+        const [business, customers, products, invoices, deletedInvoices, upiAccounts, stats] = await Promise.all([
+            apiGet('/business'),
+            apiGet('/customers'),
+            apiGet('/products'),
+            apiGet('/invoices'),
+            apiGet('/deleted-invoices'),
+            apiGet('/upi-accounts'),
+            apiGet('/stats')
+        ]);
+        _cache.business = business;
+        _cache.customers = customers;
+        _cache.products = products;
+        _cache.invoices = invoices;
+        _cache.deletedInvoices = deletedInvoices;
+        _cache.upiAccounts = upiAccounts;
+        _cache.stats = stats;
+    } catch (e) {
+        console.error('Failed to load data from server:', e);
     }
 }
 
-function setStore(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
+// Refresh cache and re-render current page
+async function refreshAndRender() {
+    await loadAllData();
+    handleRoute(); // Re-render current page
 }
 
 // ─── Business Profile ─────────────────────
 function getBusiness() {
-    return getStore(STORAGE_KEYS.business) || {
-        name: 'Your Business',
-        address: '',
-        phone: '',
-        gstin: '',
-        logo: null
-    };
+    return _cache.business;
 }
 
-function saveBusiness(data) {
-    setStore(STORAGE_KEYS.business, data);
+async function saveBusiness(data) {
+    _cache.business = await apiPut('/business', data);
 }
 
 // ─── Customers ─────────────────────
 function getCustomers() {
-    return getStore(STORAGE_KEYS.customers) || [];
+    return _cache.customers;
 }
 
-function saveCustomers(list) {
-    setStore(STORAGE_KEYS.customers, list);
+async function addCustomer(customer) {
+    const result = await apiPost('/customers', customer);
+    _cache.customers.push(result);
+    return result;
 }
 
-function addCustomer(customer) {
-    const list = getCustomers();
-    customer.id = customer.id || generateId('cust');
-    list.push(customer);
-    saveCustomers(list);
-    return customer;
+async function updateCustomer(id, updates) {
+    await apiPut('/customers/' + id, updates);
+    _cache.customers = _cache.customers.map(c => c.id === id ? { ...c, ...updates } : c);
 }
 
-function updateCustomer(id, updates) {
-    const list = getCustomers().map(c => c.id === id ? { ...c, ...updates } : c);
-    saveCustomers(list);
-}
-
-function deleteCustomer(id) {
-    saveCustomers(getCustomers().filter(c => c.id !== id));
+async function deleteCustomer(id) {
+    await apiDelete('/customers/' + id);
+    _cache.customers = _cache.customers.filter(c => c.id !== id);
 }
 
 function getCustomerById(id) {
-    return getCustomers().find(c => c.id === id) || null;
+    return _cache.customers.find(c => c.id === id) || null;
 }
 
 // ─── Products ─────────────────────
 function getProducts() {
-    return getStore(STORAGE_KEYS.products) || [];
+    return _cache.products;
 }
 
-function saveProducts(list) {
-    setStore(STORAGE_KEYS.products, list);
+async function addProduct(product) {
+    const result = await apiPost('/products', product);
+    _cache.products.push(result);
+    return result;
 }
 
-function addProduct(product) {
-    const list = getProducts();
-    product.id = product.id || generateId('prod');
-    list.push(product);
-    saveProducts(list);
-    return product;
+async function updateProduct(id, updates) {
+    await apiPut('/products/' + id, updates);
+    _cache.products = _cache.products.map(p => p.id === id ? { ...p, ...updates } : p);
 }
 
-function updateProduct(id, updates) {
-    const list = getProducts().map(p => p.id === id ? { ...p, ...updates } : p);
-    saveProducts(list);
-}
-
-function deleteProduct(id) {
-    saveProducts(getProducts().filter(p => p.id !== id));
+async function deleteProduct(id) {
+    await apiDelete('/products/' + id);
+    _cache.products = _cache.products.filter(p => p.id !== id);
 }
 
 // ─── Invoices ─────────────────────
 function getInvoices() {
-    return getStore(STORAGE_KEYS.invoices) || [];
-}
-
-function saveInvoices(list) {
-    setStore(STORAGE_KEYS.invoices, list);
-}
-
-function addInvoice(invoice) {
-    const list = getInvoices();
-    invoice.id = invoice.id || generateId('inv');
-    invoice.createdAt = invoice.createdAt || new Date().toISOString();
-    list.push(invoice);
-    saveInvoices(list);
-    return invoice;
-}
-
-function updateInvoice(id, updates) {
-    const list = getInvoices().map(inv => inv.id === id ? { ...inv, ...updates } : inv);
-    saveInvoices(list);
-}
-
-function deleteInvoice(id) {
-    const invoice = getInvoiceById(id);
-    if (!invoice) return;
-    const bin = getDeletedInvoices();
-    invoice.deletedAt = new Date().toISOString();
-    bin.push(invoice);
-    setStore(STORAGE_KEYS.deletedInvoices, bin);
-    saveInvoices(getInvoices().filter(inv => inv.id !== id));
+    return _cache.invoices;
 }
 
 function getInvoiceById(id) {
-    return getInvoices().find(inv => inv.id === id) || null;
+    return _cache.invoices.find(inv => inv.id === id) || null;
+}
+
+async function addInvoice(invoice) {
+    const result = await apiPost('/invoices', invoice);
+    _cache.invoices.push(result);
+    await _refreshStats();
+    return result;
+}
+
+async function updateInvoice(id, updates) {
+    await apiPut('/invoices/' + id, updates);
+    _cache.invoices = _cache.invoices.map(inv => inv.id === id ? { ...inv, ...updates } : inv);
+    await _refreshStats();
+}
+
+async function deleteInvoice(id) {
+    await apiDelete('/invoices/' + id);
+    const invoice = _cache.invoices.find(inv => inv.id === id);
+    if (invoice) {
+        invoice.deletedAt = new Date().toISOString();
+        _cache.deletedInvoices.push(invoice);
+    }
+    _cache.invoices = _cache.invoices.filter(inv => inv.id !== id);
+    await _refreshStats();
 }
 
 // ─── Recycle Bin ─────────────────────
 function getDeletedInvoices() {
-    return getStore(STORAGE_KEYS.deletedInvoices) || [];
+    return _cache.deletedInvoices;
 }
 
-function restoreInvoice(id) {
-    const bin = getDeletedInvoices();
-    const invoice = bin.find(inv => inv.id === id);
-    if (!invoice) return;
-    delete invoice.deletedAt;
-    const active = getInvoices();
-    active.push(invoice);
-    saveInvoices(active);
-    setStore(STORAGE_KEYS.deletedInvoices, bin.filter(inv => inv.id !== id));
+async function restoreInvoice(id) {
+    await apiPost('/deleted-invoices/' + id + '/restore', {});
+    const invoice = _cache.deletedInvoices.find(inv => inv.id === id);
+    if (invoice) {
+        delete invoice.deletedAt;
+        _cache.invoices.push(invoice);
+    }
+    _cache.deletedInvoices = _cache.deletedInvoices.filter(inv => inv.id !== id);
+    await _refreshStats();
 }
 
-function permanentlyDeleteInvoice(id) {
-    setStore(STORAGE_KEYS.deletedInvoices, getDeletedInvoices().filter(inv => inv.id !== id));
+async function permanentlyDeleteInvoice(id) {
+    await apiDelete('/deleted-invoices/' + id);
+    _cache.deletedInvoices = _cache.deletedInvoices.filter(inv => inv.id !== id);
 }
 
-function emptyRecycleBin() {
-    setStore(STORAGE_KEYS.deletedInvoices, []);
+async function emptyRecycleBin() {
+    await apiDelete('/deleted-invoices');
+    _cache.deletedInvoices = [];
 }
 
 // ─── Invoice Counter ─────────────────────
 function peekNextInvoiceNumber() {
-    const invoices = getInvoices();
-    if (invoices.length === 0) return 101;
-    const maxNum = Math.max(...invoices.map(inv => inv.invoiceNumber || 0));
+    if (_cache.invoices.length === 0) return 101;
+    const maxNum = Math.max(..._cache.invoices.map(inv => inv.invoiceNumber || 0));
     return maxNum + 1;
 }
 
-function commitInvoiceNumber(num) {
-    setStore(STORAGE_KEYS.counter, { lastInvoiceNumber: num });
+async function commitInvoiceNumber(num) {
+    await apiPut('/counter', { lastInvoiceNumber: num });
 }
 
 // ─── UPI Accounts ─────────────────────
 function getUpiAccounts() {
-    return getStore(STORAGE_KEYS.upiAccounts) || [];
+    return _cache.upiAccounts;
 }
 
-function saveUpiAccounts(list) {
-    setStore(STORAGE_KEYS.upiAccounts, list);
+async function addUpiAccount(account) {
+    const result = await apiPost('/upi-accounts', account);
+    _cache.upiAccounts.push(result);
+    return result;
 }
 
-function addUpiAccount(account) {
-    const list = getUpiAccounts();
-    account.id = account.id || generateId('upi');
-    list.push(account);
-    saveUpiAccounts(list);
-    return account;
+async function updateUpiAccount(id, updates) {
+    await apiPut('/upi-accounts/' + id, updates);
+    _cache.upiAccounts = _cache.upiAccounts.map(a => a.id === id ? { ...a, ...updates } : a);
 }
 
-function updateUpiAccount(id, updates) {
-    const list = getUpiAccounts().map(a => a.id === id ? { ...a, ...updates } : a);
-    saveUpiAccounts(list);
-}
-
-function deleteUpiAccount(id) {
-    saveUpiAccounts(getUpiAccounts().filter(a => a.id !== id));
+async function deleteUpiAccount(id) {
+    await apiDelete('/upi-accounts/' + id);
+    _cache.upiAccounts = _cache.upiAccounts.filter(a => a.id !== id);
 }
 
 function getUpiAccountById(id) {
-    return getUpiAccounts().find(a => a.id === id) || null;
+    return _cache.upiAccounts.find(a => a.id === id) || null;
+}
+
+// ─── Stats ─────────────────────
+function getStats() {
+    return _cache.stats;
+}
+
+async function _refreshStats() {
+    _cache.stats = await apiGet('/stats');
 }
 
 // ─── Search & Filter ─────────────────────
@@ -220,18 +258,10 @@ function getPaymentModeLabel(mode) {
 
 function filterInvoices({ status, paymentMode, customer, year, month } = {}) {
     let list = getInvoices();
-    if (status && status !== 'all') {
-        list = list.filter(inv => inv.status === status);
-    }
-    if (paymentMode && paymentMode !== 'all') {
-        list = list.filter(inv => inv.paymentMode === paymentMode);
-    }
-    if (customer && customer !== 'all') {
-        list = list.filter(inv => inv.customerName === customer);
-    }
-    if (year && year !== 'all') {
-        list = list.filter(inv => inv.date && inv.date.startsWith(year));
-    }
+    if (status && status !== 'all') list = list.filter(inv => inv.status === status);
+    if (paymentMode && paymentMode !== 'all') list = list.filter(inv => inv.paymentMode === paymentMode);
+    if (customer && customer !== 'all') list = list.filter(inv => inv.customerName === customer);
+    if (year && year !== 'all') list = list.filter(inv => inv.date && inv.date.startsWith(year));
     if (month && month !== 'all' && year && year !== 'all') {
         const mm = String(month).padStart(2, '0');
         list = list.filter(inv => inv.date && inv.date.substring(5, 7) === mm);
@@ -239,47 +269,24 @@ function filterInvoices({ status, paymentMode, customer, year, month } = {}) {
     return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-// ─── Stats ─────────────────────
-function getStats() {
-    const invoices = getInvoices();
-    const total = invoices.reduce((s, inv) => s + inv.grandTotal, 0);
-    const paid = invoices.filter(inv => inv.status === 'paid');
-    const due = invoices.filter(inv => inv.status === 'due');
-    const unpaid = invoices.filter(inv => inv.status === 'unpaid');
-    return {
-        totalRevenue: total,
-        invoiceCount: invoices.length,
-        paidCount: paid.length,
-        dueCount: due.length,
-        unpaidCount: unpaid.length,
-        paidAmount: paid.reduce((s, inv) => s + inv.grandTotal, 0),
-        dueAmount: due.reduce((s, inv) => s + (inv.balanceDue || Math.max(0, inv.grandTotal - (inv.receivedAmount || 0))), 0),
-        unpaidAmount: unpaid.reduce((s, inv) => s + inv.grandTotal, 0)
-    };
-}
-
 // ─── Export / Import ─────────────────────
 function exportAllData() {
-    return JSON.stringify({
-        business: getBusiness(),
-        customers: getCustomers(),
-        products: getProducts(),
-        invoices: getInvoices(),
-        upiAccounts: getUpiAccounts(),
-        counter: getStore(STORAGE_KEYS.counter),
+    const db = {
+        business: _cache.business,
+        customers: _cache.customers,
+        products: _cache.products,
+        invoices: _cache.invoices,
+        upiAccounts: _cache.upiAccounts,
         exportedAt: new Date().toISOString()
-    }, null, 2);
+    };
+    return JSON.stringify(db, null, 2);
 }
 
-function importAllData(jsonStr) {
+async function importAllData(jsonStr) {
     try {
         const data = JSON.parse(jsonStr);
-        if (data.business) saveBusiness(data.business);
-        if (data.customers) saveCustomers(data.customers);
-        if (data.products) saveProducts(data.products);
-        if (data.invoices) saveInvoices(data.invoices);
-        if (data.upiAccounts) saveUpiAccounts(data.upiAccounts);
-        if (data.counter) setStore(STORAGE_KEYS.counter, data.counter);
+        await apiPost('/import', data);
+        await loadAllData();
         return true;
     } catch (e) {
         console.error('Import failed:', e);
@@ -287,129 +294,9 @@ function importAllData(jsonStr) {
     }
 }
 
-// ─── Demo Data ─────────────────────
-function seedDemoData() {
-    if (getStore(STORAGE_KEYS.initialized)) return;
-
-    saveBusiness({
-        name: 'Deep',
-        address: 'Surat 395101',
-        phone: '6353374713',
-        gstin: '',
-        logo: null
-    });
-
-    const customers = [
-        { id: 'cust_001', name: 'VIVAH VASTRAM', phone: '8128134341', gstin: '', address: 'Surat' },
-        { id: 'cust_002', name: 'KRISHNA TEXTILES', phone: '9876543210', gstin: '24AABCT1234F1Z5', address: 'Ahmedabad' },
-        { id: 'cust_003', name: 'SHREE FASHION', phone: '9988776655', gstin: '', address: 'Rajkot' }
-    ];
-    saveCustomers(customers);
-
-    const products = [
-        { id: 'prod_001', name: 'Reel', unit: 'NOS', defaultPrice: 300 },
-        { id: 'prod_002', name: 'Banner Design', unit: 'PCS', defaultPrice: 500 },
-        { id: 'prod_003', name: 'Video Editing', unit: 'NOS', defaultPrice: 1500 },
-        { id: 'prod_004', name: 'Social Media Post', unit: 'NOS', defaultPrice: 200 },
-        { id: 'prod_005', name: 'Logo Design', unit: 'NOS', defaultPrice: 5000 }
-    ];
-    saveProducts(products);
-
-    const invoices = [
-        {
-            id: 'inv_demo_1',
-            invoiceNumber: 101,
-            date: '2025-12-15',
-            customerId: 'cust_002',
-            customerName: 'KRISHNA TEXTILES',
-            customerPhone: '9876543210',
-            customerGstin: '24AABCT1234F1Z5',
-            items: [
-                { name: 'Banner Design', pricePerUnit: 500, unit: 'PCS', qty: 4, total: 2000 },
-                { name: 'Social Media Post', pricePerUnit: 200, unit: 'NOS', qty: 10, total: 2000 }
-            ],
-            subtotal: 4000,
-            gstPercent: 0,
-            gstAmount: 0,
-            discount: 0,
-            grandTotal: 4000,
-            amountInWords: 'Four Thousand Rupees Only',
-            status: 'paid',
-            paymentMode: 'upi',
-            notes: '',
-            createdAt: '2025-12-15T10:00:00Z'
-        },
-        {
-            id: 'inv_demo_2',
-            invoiceNumber: 102,
-            date: '2025-12-18',
-            customerId: 'cust_001',
-            customerName: 'VIVAH VASTRAM',
-            customerPhone: '8128134341',
-            customerGstin: '',
-            items: [
-                { name: 'Reel', pricePerUnit: 300, unit: 'NOS', qty: 9, total: 2700 }
-            ],
-            subtotal: 2700,
-            gstPercent: 0,
-            gstAmount: 0,
-            discount: 0,
-            grandTotal: 2700,
-            amountInWords: 'Two Thousand Seven Hundred Rupees Only',
-            status: 'paid',
-            paymentMode: 'cash',
-            notes: '',
-            createdAt: '2025-12-18T10:00:00Z'
-        },
-        {
-            id: 'inv_demo_3',
-            invoiceNumber: 103,
-            date: '2026-01-05',
-            customerId: 'cust_003',
-            customerName: 'SHREE FASHION',
-            customerPhone: '9988776655',
-            customerGstin: '',
-            items: [
-                { name: 'Video Editing', pricePerUnit: 1500, unit: 'NOS', qty: 2, total: 3000 },
-                { name: 'Reel', pricePerUnit: 300, unit: 'NOS', qty: 5, total: 1500 }
-            ],
-            subtotal: 4500,
-            gstPercent: 18,
-            gstAmount: 810,
-            discount: 0,
-            grandTotal: 5310,
-            amountInWords: 'Five Thousand Three Hundred Ten Rupees Only',
-            status: 'unpaid',
-            paymentMode: '',
-            notes: 'Pending payment',
-            createdAt: '2026-01-05T10:00:00Z'
-        },
-        {
-            id: 'inv_demo_4',
-            invoiceNumber: 104,
-            date: '2026-02-10',
-            customerId: 'cust_002',
-            customerName: 'KRISHNA TEXTILES',
-            customerPhone: '9876543210',
-            customerGstin: '24AABCT1234F1Z5',
-            items: [
-                { name: 'Logo Design', pricePerUnit: 5000, unit: 'NOS', qty: 1, total: 5000 },
-                { name: 'Banner Design', pricePerUnit: 500, unit: 'PCS', qty: 6, total: 3000 }
-            ],
-            subtotal: 8000,
-            gstPercent: 18,
-            gstAmount: 1440,
-            discount: 500,
-            grandTotal: 8940,
-            amountInWords: 'Eight Thousand Nine Hundred Forty Rupees Only',
-            status: 'paid',
-            paymentMode: 'bank',
-            notes: '',
-            createdAt: '2026-02-10T10:00:00Z'
-        }
-    ];
-    saveInvoices(invoices);
-
-    setStore(STORAGE_KEYS.counter, { lastInvoiceNumber: 104 });
-    setStore(STORAGE_KEYS.initialized, true);
+// ─── Init (called from app.js) ─────────────────────
+async function seedDemoData() {
+    // No seeding needed — server starts with empty data
+    // Just load data from server into cache
+    await loadAllData();
 }

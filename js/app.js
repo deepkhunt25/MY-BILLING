@@ -3,8 +3,8 @@
 // ========================================
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
-    seedDemoData();
+document.addEventListener('DOMContentLoaded', async () => {
+    await seedDemoData(); // loads all data from server into cache
     initRouter();
     initMobileMenu();
     updateSidebarBrand();
